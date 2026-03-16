@@ -1,0 +1,690 @@
+<!-- ================================================================
+     Bay du Nord — Subsea Project Explorer v2
+     Three.js r128 · OrbitControls · Full project scope
+     NEW: Turret mooring · Shuttle tanker · ROV (animated) · PLET
+          UTA · Flying Leads · SSIV · Water Injection · Shore Power
+          MEG Injection Skid
+     Softr Custom Code Ready — self-contained single file
+     ================================================================ -->
+
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<style>
+  #spe-root {
+    font-family: 'Open Sans', 'Segoe UI', Arial, sans-serif;
+    position: relative; width: 100%; height: 700px;
+    overflow: hidden; background: #020d1f;
+  }
+  #spe-root * { box-sizing: border-box; margin: 0; padding: 0; }
+  #spe-canvas {
+    display: block; width: 100% !important; height: 100% !important;
+    position: absolute; inset: 0; z-index: 0;
+  }
+
+  #spe-hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 16px 20px 0; display: flex; align-items: flex-start;
+    justify-content: space-between; pointer-events: none; z-index: 30;
+  }
+  .spe-eyebrow { font-size: 9px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(126,184,247,.6); margin-bottom: 4px; }
+  #spe-hud h1 { font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -.3px; line-height: 1.2; }
+  #spe-hud h1 em { font-style: normal; color: #7eb8f7; }
+  .spe-depth-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(0,44,119,.55); border: 1px solid rgba(126,184,247,.2); border-radius: 20px; padding: 4px 10px; font-size: 10px; font-weight: 600; color: rgba(255,255,255,.7); margin-top: 7px; }
+  .spe-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #1a9e6c; animation: spePulse 2s infinite; flex-shrink: 0; }
+  @keyframes spePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+
+  /* Phase toggle */
+  #spe-phase-toggle {
+    pointer-events: auto; display: flex; background: rgba(2,13,31,.8);
+    border: 1px solid rgba(126,184,247,.2); border-radius: 10px;
+    padding: 3px; gap: 3px; position: relative; z-index: 30;
+  }
+  .spe-phase-btn {
+    padding: 6px 12px; border: none; border-radius: 7px; font-size: 10px;
+    font-weight: 700; cursor: pointer; font-family: 'Open Sans',sans-serif;
+    color: rgba(255,255,255,.5); background: transparent;
+    transition: background .15s, color .15s;
+  }
+  .spe-phase-btn.active { background: #002c77; color: #fff; }
+
+  #spe-hints {
+    position: absolute; bottom: 14px; left: 18px;
+    display: flex; gap: 8px; z-index: 10; pointer-events: none;
+  }
+  .spe-hint { background: rgba(2,13,31,.75); border: 1px solid rgba(126,184,247,.15); border-radius: 5px; padding: 4px 9px; font-size: 9.5px; font-weight: 600; color: rgba(255,255,255,.45); }
+
+  #spe-ruler {
+    position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; align-items: center;
+    z-index: 10; pointer-events: none;
+  }
+  .spe-ruler-mark { display: flex; align-items: center; gap: 5px; padding: 3px 0; width: 76px; justify-content: flex-end; }
+  .spe-ruler-label { font-size: 9px; font-weight: 600; color: rgba(126,184,247,.5); white-space: nowrap; }
+  .spe-ruler-tick { width: 10px; height: 1px; background: rgba(126,184,247,.25); }
+  .spe-ruler-line { width: 1px; height: 150px; background: linear-gradient(to bottom, rgba(126,184,247,.08), rgba(126,184,247,.28), rgba(126,184,247,.04)); }
+
+  #spe-panel {
+    position: absolute; top: 0; left: 0; bottom: 0; width: 340px; max-width: 90%;
+    background: linear-gradient(160deg, rgba(2,13,31,.97) 0%, rgba(5,22,55,.97) 100%);
+    border-right: 1px solid rgba(126,184,247,.12);
+    transform: translateX(-100%); transition: transform .4s cubic-bezier(.22,1,.36,1);
+    z-index: 40; overflow-y: auto;
+  }
+  #spe-panel.open { transform: translateX(0); }
+  #spe-panel-close {
+    position: absolute; top: 12px; right: 12px; width: 27px; height: 27px;
+    border-radius: 50%; background: rgba(126,184,247,.1); border: 1px solid rgba(126,184,247,.2);
+    cursor: pointer; color: rgba(255,255,255,.7); font-size: 13px;
+    display: flex; align-items: center; justify-content: center; transition: background .15s;
+  }
+  #spe-panel-close:hover { background: rgba(126,184,247,.25); }
+  .spe-panel-accent { height: 4px; width: 100%; }
+  .spe-panel-inner { padding: 24px 24px 30px; }
+  .spe-panel-category { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(126,184,247,.5); margin-bottom: 7px; }
+  .spe-panel-title { font-size: 17px; font-weight: 800; color: #fff; line-height: 1.2; margin-bottom: 16px; letter-spacing: -.3px; }
+  .spe-panel-divider { height: 1px; background: rgba(126,184,247,.1); margin: 14px 0; }
+  .spe-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .spe-stat { background: rgba(126,184,247,.06); border: 1px solid rgba(126,184,247,.1); border-radius: 9px; padding: 10px 12px; }
+  .spe-stat-label { font-size: 8.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: rgba(126,184,247,.45); margin-bottom: 4px; }
+  .spe-stat-val { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.2; }
+  .spe-mandate-bar-wrap { margin-bottom: 14px; }
+  .spe-mandate-label { display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; color: rgba(255,255,255,.5); margin-bottom: 5px; }
+  .spe-mandate-label span:last-child { color: #fff; font-size: 11px; font-weight: 800; }
+  .spe-mandate-track { height: 5px; background: rgba(255,255,255,.08); border-radius: 10px; overflow: hidden; }
+  .spe-mandate-fill { height: 100%; border-radius: 10px; transition: width .8s cubic-bezier(.4,0,.2,1); }
+  .spe-status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 9.5px; font-weight: 700; margin: 2px; }
+  .spe-status-badge.green { background: rgba(26,158,108,.2); color: #6ee7c0; border: 1px solid rgba(26,158,108,.3); }
+  .spe-status-badge.blue  { background: rgba(0,44,119,.4); color: #7eb8f7; border: 1px solid rgba(126,184,247,.25); }
+  .spe-status-badge.amber { background: rgba(224,123,0,.2); color: #fbbf24; border: 1px solid rgba(224,123,0,.3); }
+  .spe-status-badge.teal  { background: rgba(0,180,180,.15); color: #67e8f9; border: 1px solid rgba(0,200,200,.25); }
+  .spe-desc { font-size: 11.5px; color: rgba(255,255,255,.42); line-height: 1.75; margin-top: 12px; }
+
+  #spe-click-hint {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none; z-index: 5;
+    opacity: 1; transition: opacity .5s ease;
+  }
+  #spe-click-hint.hidden { opacity: 0; }
+  .spe-click-ring { width: 58px; height: 58px; border-radius: 50%; border: 1.5px solid rgba(126,184,247,.35); margin: 0 auto 9px; animation: speRing 2s ease-in-out infinite; }
+  @keyframes speRing { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.15);opacity:.2} }
+  .spe-click-text { font-size: 10px; font-weight: 600; color: rgba(126,184,247,.6); letter-spacing: 1.5px; text-transform: uppercase; }
+
+  /* ROV status HUD */
+  #spe-rov-hud {
+    position: absolute; top: 14px; right: 14px;
+    background: rgba(2,13,31,.82); border: 1px solid rgba(0,200,180,.2);
+    border-radius: 9px; padding: 9px 12px; z-index: 10;
+    pointer-events: none; min-width: 130px;
+  }
+  .spe-rov-title { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(0,200,180,.55); margin-bottom: 6px; }
+  .spe-rov-row { display: flex; justify-content: space-between; gap: 12px; font-size: 9.5px; margin-bottom: 3px; }
+  .spe-rov-row:last-child { margin-bottom: 0; }
+  .spe-rov-lbl { color: rgba(255,255,255,.35); }
+  .spe-rov-val { color: rgba(0,220,180,.9); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  #spe-legend {
+    position: absolute; bottom: 14px; right: 14px;
+    background: rgba(2,13,31,.82); border: 1px solid rgba(126,184,247,.12);
+    border-radius: 10px; padding: 11px 13px; z-index: 30; max-width: 185px;
+    pointer-events: auto;
+  }
+  .spe-leg-title { font-size: 8.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(126,184,247,.4); margin-bottom: 7px; }
+  .spe-leg-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: rgba(255,255,255,.5); font-weight: 500; margin-bottom: 4px; cursor: pointer; transition: color .12s; pointer-events: auto; user-select: none; }
+  .spe-leg-item:last-child { margin-bottom: 0; }
+  .spe-leg-item:hover { color: rgba(255,255,255,.9); }
+  .spe-leg-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+
+  @media(max-width:640px){
+    #spe-root { height: 580px; }
+    #spe-panel { width: 290px; }
+    .spe-panel-inner { padding: 18px 16px 22px; }
+    #spe-legend { display: none; }
+    #spe-ruler { display: none; }
+    #spe-rov-hud { display: none; }
+  }
+</style>
+
+<div id="spe-root">
+  <canvas id="spe-canvas"></canvas>
+
+  <div id="spe-hud">
+    <div>
+      <div class="spe-eyebrow">Bay du Nord &middot; NL Offshore &middot; 1,200 m depth</div>
+      <h1>Subsea Project <em>Explorer</em></h1>
+      <div class="spe-depth-badge">
+        <span class="spe-live-dot"></span>
+        Full scope — click any component
+      </div>
+    </div>
+    <div id="spe-phase-toggle">
+      <button class="spe-phase-btn active" data-phase="production">Production</button>
+      <button class="spe-phase-btn" data-phase="drilling">Drilling</button>
+    </div>
+  </div>
+
+  <div id="spe-hints">
+    <div class="spe-hint">&#8635; Drag</div>
+    <div class="spe-hint">&#128269; Scroll</div>
+    <div class="spe-hint">&#128070; Click</div>
+    <div class="spe-hint">Esc close</div>
+  </div>
+
+  <div id="spe-ruler">
+    <div class="spe-ruler-mark"><span class="spe-ruler-label">Surface</span><div class="spe-ruler-tick"></div></div>
+    <div class="spe-ruler-line"></div>
+    <div class="spe-ruler-mark"><span class="spe-ruler-label">600 m</span><div class="spe-ruler-tick"></div></div>
+    <div class="spe-ruler-line"></div>
+    <div class="spe-ruler-mark"><span class="spe-ruler-label">1,200 m</span><div class="spe-ruler-tick"></div></div>
+  </div>
+
+  <div id="spe-click-hint">
+    <div class="spe-click-ring"></div>
+    <div class="spe-click-text">Click a component</div>
+  </div>
+
+  <div id="spe-rov-hud">
+    <div class="spe-rov-title">ROV-1 Telemetry</div>
+    <div class="spe-rov-row"><span class="spe-rov-lbl">Depth</span><span class="spe-rov-val" id="rov-depth">1,187 m</span></div>
+    <div class="spe-rov-row"><span class="spe-rov-lbl">Status</span><span class="spe-rov-val" id="rov-status">SURVEY</span></div>
+    <div class="spe-rov-row"><span class="spe-rov-lbl">Battery</span><span class="spe-rov-val" id="rov-batt">94%</span></div>
+  </div>
+
+  <div id="spe-legend">
+    <div class="spe-leg-title">Scene Components</div>
+    <div class="spe-leg-item" data-focus="fpso"><div class="spe-leg-dot" style="background:#708090"></div>FPSO Nganhurra</div>
+    <div class="spe-leg-item" data-focus="turret"><div class="spe-leg-dot" style="background:#c0a040"></div>Turret Mooring</div>
+    <div class="spe-leg-item" data-focus="tanker"><div class="spe-leg-dot" style="background:#5a6a7a"></div>Shuttle Tanker</div>
+    <div class="spe-leg-item" data-focus="manifold"><div class="spe-leg-dot" style="background:#4a90d9"></div>Subsea Manifold</div>
+    <div class="spe-leg-item" data-focus="plet"><div class="spe-leg-dot" style="background:#6699bb"></div>PLET / PLEM</div>
+    <div class="spe-leg-item" data-focus="uta"><div class="spe-leg-dot" style="background:#9966cc"></div>UTA / Flying Leads</div>
+    <div class="spe-leg-item" data-focus="ssiv"><div class="spe-leg-dot" style="background:#dd4444"></div>SSIV</div>
+    <div class="spe-leg-item" data-focus="riser"><div class="spe-leg-dot" style="background:#5a7a8a"></div>SCR Risers</div>
+    <div class="spe-leg-item" data-focus="wellhead"><div class="spe-leg-dot" style="background:#e07b3a"></div>Wellheads (Prod.)</div>
+    <div class="spe-leg-item" data-focus="injwell"><div class="spe-leg-dot" style="background:#00bbbb"></div>Water Injection Wells</div>
+    <div class="spe-leg-item" data-focus="rov"><div class="spe-leg-dot" style="background:#00cc88"></div>ROV (Live)</div>
+    <div class="spe-leg-item" data-focus="shorepower"><div class="spe-leg-dot" style="background:#aadd00"></div>Shore Power Cable</div>
+  </div>
+
+  <div id="spe-panel">
+    <button id="spe-panel-close">&#10005;</button>
+    <div class="spe-panel-accent" id="spe-panel-accent"></div>
+    <div class="spe-panel-inner">
+      <div class="spe-panel-category" id="spe-panel-cat"></div>
+      <div class="spe-panel-title" id="spe-panel-title"></div>
+      <div class="spe-stat-grid" id="spe-panel-stats"></div>
+      <div class="spe-mandate-bar-wrap">
+        <div class="spe-mandate-label"><span>Local Content Mandate</span><span id="spe-mandate-pct">0%</span></div>
+        <div class="spe-mandate-track"><div class="spe-mandate-fill" id="spe-mandate-fill"></div></div>
+      </div>
+      <div id="spe-panel-badges"></div>
+      <div class="spe-panel-divider"></div>
+      <div class="spe-desc" id="spe-panel-desc"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+
+/* ── Component data ──────────────────────────────────────────────── */
+var COMPONENTS={
+  fpso:{category:'Surface Production Facility',title:'FPSO Nganhurra — BW Offshore',accentColor:'#4a90d9',mandatePct:15,mandateColor:'#4a90d9',
+    stats:[{label:'Hull Type',val:'Converted Tanker'},{label:'Capacity',val:'150,000 bbl/day'},{label:'Deployment',val:'2026–2027'},{label:'Operator',val:'Equinor (BdN)'},{label:'Local Fab.',val:'15% Topsides'},{label:'Status',val:'Pre-conversion'}],
+    badges:[{text:'BW Offshore Contract',type:'blue'},{text:'C-NLOPB Approved',type:'green'}],
+    desc:'Primary production vessel for Bay du Nord. FPSO Nganhurra is a converted double-hull tanker awarded to BW Offshore by Equinor. Significant upgrades for North Atlantic and Canadian regulatory requirements. Local NL fabrication focuses on topsides module integration and commissioning.'
+  },
+  turret:{category:'Disconnectable Turret Mooring System',title:'Disconnectable Turret Mooring',accentColor:'#c0a040',mandatePct:20,mandateColor:'#c0a040',
+    stats:[{label:'Type',val:'Disconnectable'},{label:'Mooring Lines',val:'9 (3×3 bundles)'},{label:'Chain Dia.',val:'162 mm'},{label:'Storm Rating',val:'1:10,000 yr'},{label:'Swivel Stacks',val:'Fluid + Power'},{label:'Key Feature',val:'Storm disconnect'},{label:'Local Content',val:'20%'},{label:'Cert.',val:'DNVGL Class'}],
+    badges:[{text:'North Atlantic Design',type:'amber'},{text:'DNVGL Certified',type:'blue'}],
+    desc:'The disconnectable turret allows the FPSO to fully detach from all 9 mooring lines and risers during extreme North Atlantic storms, then reconnect when conditions improve. It houses hydraulic disconnection mechanisms, fluid swivel stacks for production and injection, and electrical/fibre optic swivelstacks for controls.'
+  },
+  tanker:{category:'Export & Offtake',title:'Shuttle Tanker — Crude Offtake',accentColor:'#5a6a7a',mandatePct:5,mandateColor:'#5a6a7a',
+    stats:[{label:'Type',val:'Aframax Tanker'},{label:'Capacity',val:'~750,000 bbl'},{label:'Frequency',val:'Every 7–10 days'},{label:'Connection',val:'Stern hawser'},{label:'Positioning',val:'Dynamic (DP2)'},{label:'Port',val:'Come By Chance NL'}],
+    badges:[{text:'MARPOL Compliant',type:'green'},{text:'Dynamic Positioning',type:'blue'}],
+    desc:'Aframax-class shuttle tankers periodically moor at the FPSO stern to offtake stored crude. Dynamic positioning tankers with stern-to-stern hawser mooring are used due to remote location (~500km NE of St. John\'s). Typically calls every 7–10 days depending on production rates and storage capacity.'
+  },
+  manifold:{category:'Subsea Production System',title:'Subsea Manifold System',accentColor:'#1a9e6c',mandatePct:95,mandateColor:'#1a9e6c',
+    stats:[{label:'Water Depth',val:'1,200 m'},{label:'Standard',val:'API 17D / ISO 13628-4'},{label:'Slots',val:'6 Production'},{label:'Max Pressure',val:'690 bar (10 ksi)'},{label:'Local Mandate',val:'95% C-NLOPB'},{label:'NL Scope',val:'High Priority'}],
+    badges:[{text:'95% Local Mandate',type:'green'},{text:'API 17D Required',type:'amber'},{text:'Deepwater',type:'blue'}],
+    desc:'Central hub of the subsea production system. 95% of subsea equipment must be sourced locally under C-NLOPB Benefits Direction — the highest-value NL fabrication opportunity: machining, assembly, pressure testing, and API 17D certification all performed locally.'
+  },
+  plet:{category:'Subsea Infrastructure',title:'PLET / PLEM — Pipeline End Structures',accentColor:'#6699bb',mandatePct:95,mandateColor:'#1a9e6c',
+    stats:[{label:'Type',val:'PLET / PLEM'},{label:'Count',val:'6 PLETs, 2 PLEMs'},{label:'Standard',val:'API 17D'},{label:'Depth',val:'1,200 m'},{label:'Material',val:'Duplex SS'},{label:'NL Mandate',val:'95% C-NLOPB'},{label:'Connection',val:'Hub connector'},{label:'NL Scope',val:'Fab & Test'}],
+    badges:[{text:'95% Local Mandate',type:'green'},{text:'NL Fab Opportunity',type:'teal'},{text:'API 17D',type:'amber'}],
+    desc:'Pipeline End Terminations (PLETs) and PLEMs are the structural end-fittings of every subsea flowline. Each is a precision-fabricated steel structure with hub connectors rated to full well pressure. Prime NL fabrication targets requiring CNC machining, subsea-grade welding, and API 17D pressure qualification — all performed locally.'
+  },
+  uta:{category:'Subsea Controls Infrastructure',title:'UTA, SCM & Flying Leads',accentColor:'#9966cc',mandatePct:95,mandateColor:'#1a9e6c',
+    stats:[{label:'UTAs',val:'2 (prod + inj)'},{label:'SCMs',val:'6 (one per tree)'},{label:'EFL Count',val:'8 Electrical'},{label:'HFL Count',val:'12 Hydraulic'},{label:'Umbilical',val:'1 x Dynamic'},{label:'NL Mandate',val:'95% C-NLOPB'},{label:'Standards',val:'API 17E / IEC'},{label:'NL Scope',val:'Assembly & FAT'}],
+    badges:[{text:'95% Local Mandate',type:'green'},{text:'NL Fab Opportunity',type:'teal'},{text:'API 17E',type:'amber'}],
+    desc:'The Umbilical Termination Assembly (UTA) is the seabed hub where the main umbilical from the FPSO splits into individual Flying Leads. Electrical Flying Leads (EFLs) carry power and data to each SCM. Hydraulic Flying Leads (HFLs) supply pressure for valve actuation. A direct NL fabrication and testing opportunity under the 95% mandate.'
+  },
+  ssiv:{category:'Safety & Isolation',title:'Subsea Isolation Valve (SSIV)',accentColor:'#dd4444',mandatePct:95,mandateColor:'#1a9e6c',
+    stats:[{label:'Type',val:'Gate/Ball Valve'},{label:'Count',val:'3 on flowlines'},{label:'Standard',val:'API 6D / DNVGL'},{label:'Actuation',val:'Spring-return, fail-close'},{label:'Response',val:'<45 sec close'},{label:'Rating',val:'Full bore, 690 bar'},{label:'NL Mandate',val:'95% C-NLOPB'},{label:'C-NLOPB',val:'ALARP Required'}],
+    badges:[{text:'Safety Critical',type:'amber'},{text:'95% Local Mandate',type:'green'},{text:'Fail-Close',type:'blue'}],
+    desc:'Emergency shutdown valves on flowlines close to the manifold. In the event of a riser failure or loss-of-well-control, SSIVs close automatically within 45 seconds. C-NLOPB ALARP requirements mandate SSIVs on all Bay du Nord production flowlines. Local NL: valve body machining, actuator assembly, API 6D testing.'
+  },
+  riser:{category:'Subsea Infrastructure',title:'Steel Catenary Risers (SCR)',accentColor:'#7eb8f7',mandatePct:35,mandateColor:'#4a90d9',
+    stats:[{label:'Riser Type',val:'Steel Catenary (SCR)'},{label:'Count',val:'3 Prod + 1 Inj'},{label:'Material',val:'API 5L Gr. X65'},{label:'Length',val:'~1,400 m each'},{label:'Local Content',val:'35%'},{label:'Coating',val:'FBE + CWC Insulation'}],
+    badges:[{text:'35% Local Scope',type:'blue'},{text:'ASME B31.3',type:'amber'}],
+    desc:'Steel Catenary Risers connect the seabed to the FPSO through 1,200 m of water, hanging in a natural catenary curve from the disconnectable turret. Local NL opportunities include pipe end prep, coating application, weld inspection, and ASME B31.3 pressure testing services.'
+  },
+  wellhead:{category:'Well Infrastructure',title:'Subsea Production Wellheads',accentColor:'#e07b3a',mandatePct:95,mandateColor:'#1a9e6c',
+    stats:[{label:'Standard',val:'API 6A / API 17D'},{label:'Well Count',val:'6 Production'},{label:'Water Depth',val:'1,200 m'},{label:'Tree Type',val:'Horizontal XT'},{label:'Local Mandate',val:'95% C-NLOPB'},{label:'NL Scope',val:'Assembly & Test'}],
+    badges:[{text:'95% Local Mandate',type:'green'},{text:'API 6A Certified',type:'amber'}],
+    desc:'Six production wellheads and horizontal Christmas trees provide well control and flow management at seabed level. Each tree is controlled remotely via its Subsea Control Module (SCM). Local NL: API 6A-certified valve assembly, pressure testing, SCM integration, and system commissioning.'
+  },
+  injwell:{category:'Reservoir Management',title:'Water Injection Wells',accentColor:'#00bbbb',mandatePct:95,mandateColor:'#1a9e6c',
+    stats:[{label:'Well Count',val:'2 Injection'},{label:'Purpose',val:'Pressure maintenance'},{label:'Fluid',val:'Seawater (filtered)'},{label:'Injection Rate',val:'~50,000 bbl/day'},{label:'Standard',val:'API 6A / 17D'},{label:'NL Mandate',val:'95% C-NLOPB'},{label:'Depth',val:'1,200 m seabed'},{label:'NL Scope',val:'Same as prod. trees'}],
+    badges:[{text:'95% Local Mandate',type:'green'},{text:'Reservoir Mgmt',type:'teal'},{text:'API 6A',type:'amber'}],
+    desc:'Water injection wells maintain reservoir pressure as oil is produced. Filtered seawater is pumped down a dedicated injection riser and flowline to the injection trees. Identical local content requirements to production trees — equivalent NL fabrication opportunity.'
+  },
+  rov:{category:'Offshore Operations',title:'Work-Class ROV — Seabed Operations',accentColor:'#00cc88',mandatePct:0,mandateColor:'#00cc88',
+    stats:[{label:'Class',val:'Work-Class WROV'},{label:'Depth Rating',val:'3,000 m'},{label:'Thrust',val:'150 kgf fwd'},{label:'Payload',val:'150 kg'},{label:'Cameras',val:'6 (HD + wide)'},{label:'Manipulators',val:'7-function × 2'},{label:'Power',val:'150 kVA'},{label:'Tether',val:'~1,400 m deployed'}],
+    badges:[{text:'IMCA Certified',type:'green'},{text:'Live Telemetry',type:'teal'},{text:'ROV Operator NL',type:'blue'}],
+    desc:'Work-class ROVs are used throughout the Bay du Nord lifecycle — installation, inspection, valve actuation, and maintenance. Deployed from the FPSO via a tether management system (TMS). ROV pilots are a key NL workforce skill trained through Marine Institute programs. IMCA-certified ROV supervisors are required on all subsea operations.'
+  },
+  shorepower:{category:'Net-Zero Operations',title:'Shore Power Cable System',accentColor:'#aadd00',mandatePct:30,mandateColor:'#aadd00',
+    stats:[{label:'Voltage',val:'132 kV AC'},{label:'Cable Length',val:'~500 km'},{label:'Power Source',val:'NL Hydro Grid'},{label:'Capacity',val:'~100 MW'},{label:'CO2 Saving',val:'~100k tonnes/yr'},{label:'Landing',val:'Come By Chance'},{label:'Local Content',val:'30% (cable lay)'},{label:'Target',val:'Net-Zero Ops'}],
+    badges:[{text:'Net-Zero Ops Target',type:'green'},{text:'NL Grid Connected',type:'teal'},{text:'World First Canada',type:'amber'}],
+    desc:'Bay du Nord targets net-zero operations via electrification from the NL hydroelectric grid — a world first for Canadian offshore oil. A 132 kV subsea cable running ~500 km from the NL coast replaces gas turbine generators, saving ~100,000 tonnes of CO2/year. Significant local content opportunity for NL cable-lay contractors and grid integration engineering.'
+  }
+};
+
+/* ── Panel helpers ───────────────────────────────────────────────── */
+var selectedObj=null;
+
+function isPanelOpen(){
+  return document.getElementById('spe-panel').classList.contains('open');
+}
+
+function speOpenPanel(key){
+  var d=COMPONENTS[key]; if(!d) return;
+  document.getElementById('spe-click-hint').classList.add('hidden');
+  document.getElementById('spe-panel-cat').textContent=d.category;
+  document.getElementById('spe-panel-title').textContent=d.title;
+  document.getElementById('spe-panel-accent').style.background=d.accentColor;
+  var sh='';
+  for(var i=0;i<d.stats.length;i++) sh+='<div class="spe-stat"><div class="spe-stat-label">'+d.stats[i].label+'</div><div class="spe-stat-val">'+d.stats[i].val+'</div></div>';
+  document.getElementById('spe-panel-stats').innerHTML=sh;
+  document.getElementById('spe-mandate-pct').textContent=d.mandatePct+'%';
+  document.getElementById('spe-mandate-fill').style.background=d.mandateColor;
+  document.getElementById('spe-mandate-fill').style.width='0%';
+  setTimeout(function(){ document.getElementById('spe-mandate-fill').style.width=d.mandatePct+'%'; },60);
+  var bh='';
+  for(var j=0;j<d.badges.length;j++) bh+='<span class="spe-status-badge '+d.badges[j].type+'">'+d.badges[j].text+'</span>';
+  document.getElementById('spe-panel-badges').innerHTML=bh;
+  document.getElementById('spe-panel-desc').textContent=d.desc;
+  document.getElementById('spe-panel').classList.add('open');
+}
+
+function speClosePanel(){
+  document.getElementById('spe-panel').classList.remove('open');
+  if(selectedObj){ resetHighlight(selectedObj); selectedObj=null; }
+}
+
+/* ── Scene setup ─────────────────────────────────────────────────── */
+var canvas=document.getElementById('spe-canvas');
+var root=document.getElementById('spe-root');
+var W=root.clientWidth, H=root.clientHeight;
+
+var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(W,H);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
+
+var scene=new THREE.Scene();
+scene.background=new THREE.Color(0x020d1f);
+scene.fog=new THREE.Fog(0x020d1f,40,95);
+
+var camera=new THREE.PerspectiveCamera(52,W/H,0.1,200);
+camera.position.set(18,12,26);
+
+var controls=new THREE.OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.dampingFactor=0.06;
+controls.minDistance=8; controls.maxDistance=60;
+controls.maxPolarAngle=Math.PI*0.82;
+controls.target.set(0,-2,0); controls.update();
+
+/* Lights */
+scene.add(new THREE.HemisphereLight(0x4477aa,0x001133,0.4));
+var sun=new THREE.DirectionalLight(0xfff4e0,1.4);
+sun.position.set(12,18,10); sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.near=0.5; sun.shadow.camera.far=65;
+sun.shadow.camera.left=-30; sun.shadow.camera.right=30;
+sun.shadow.camera.top=28; sun.shadow.camera.bottom=-28;
+scene.add(sun);
+var fillL=new THREE.DirectionalLight(0x3366aa,0.3); fillL.position.set(-8,5,-10); scene.add(fillL);
+var uwL=new THREE.PointLight(0x1155aa,1.5,38); uwL.position.set(0,-7,0); scene.add(uwL);
+
+/* Materials */
+function mat(col,o){ return new THREE.MeshStandardMaterial(Object.assign({color:col,roughness:.6,metalness:.3},o||{})); }
+var mH=mat(0x6b7a8d,{roughness:.7,metalness:.4}), mS=mat(0xd4cec0,{roughness:.8,metalness:.1}), mA=mat(0xe05c1a,{roughness:.5});
+var mMnf=mat(0x4a6080,{roughness:.5,metalness:.6}), mMA=mat(0xffaa22,{roughness:.4,metalness:.5});
+var mR=mat(0x3a5060,{roughness:.6,metalness:.5}), mW=mat(0x58381a,{roughness:.6,metalness:.5}), mWA=mat(0xe06010,{roughness:.4});
+var mSF=mat(0x5a4a32,{roughness:.95,metalness:0});
+var mTur=mat(0xb08820,{roughness:.4,metalness:.7}), mCh=mat(0x888060,{roughness:.7,metalness:.6});
+var mTnk=mat(0x5a6a78,{roughness:.7,metalness:.4});
+var mPL=mat(0x5588aa,{roughness:.5,metalness:.6}), mUT=mat(0x7755aa,{roughness:.5,metalness:.5});
+var mSV=mat(0xaa3333,{roughness:.4,metalness:.7}), mIW=mat(0x008888,{roughness:.5,metalness:.5});
+var mROV=mat(0x00aa66,{roughness:.4,metalness:.5}), mSP=mat(0x88cc00,{roughness:.6,metalness:.3});
+var matWater=new THREE.MeshPhongMaterial({color:0x0a2a5a,transparent:true,opacity:.5,side:THREE.DoubleSide,shininess:90,specular:0x3399ff});
+
+/* Primitive helpers */
+function box(w,h,d,m,x,y,z,rx,ry,rz){ var ms=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); ms.position.set(x||0,y||0,z||0); ms.rotation.set(rx||0,ry||0,rz||0); ms.castShadow=true; ms.receiveShadow=true; return ms; }
+function cyl(rt,rb,h,sg,m,x,y,z,rx,ry,rz){ var ms=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,sg||10),m); ms.position.set(x||0,y||0,z||0); ms.rotation.set(rx||0,ry||0,rz||0); ms.castShadow=true; return ms; }
+function sph(r,m,x,y,z){ var ms=new THREE.Mesh(new THREE.SphereGeometry(r,10,7),m); ms.position.set(x||0,y||0,z||0); ms.castShadow=true; return ms; }
+
+/* Seabed */
+var sfMsh=new THREE.Mesh(new THREE.PlaneGeometry(100,100,20,20),mSF);
+sfMsh.rotation.x=-Math.PI/2; sfMsh.position.y=-16; sfMsh.receiveShadow=true;
+var sfV=sfMsh.geometry.attributes.position;
+for(var vi=0;vi<sfV.count;vi++) sfV.setY(vi,sfV.getY(vi)+(Math.random()-.5)*.4);
+sfV.needsUpdate=true; scene.add(sfMsh);
+
+/* Water */
+var wMsh=new THREE.Mesh(new THREE.PlaneGeometry(100,100,28,28),matWater);
+wMsh.rotation.x=-Math.PI/2; wMsh.position.y=0.3; scene.add(wMsh);
+var wV=wMsh.geometry.attributes.position, wOY=[];
+for(var wi=0;wi<wV.count;wi++) wOY.push(wV.getY(wi));
+
+/* Particles */
+var pp=[]; for(var pi=0;pi<240;pi++) pp.push((Math.random()-.5)*50,(Math.random()-1)*16,(Math.random()-.5)*50);
+var pgeo=new THREE.BufferGeometry(); pgeo.setAttribute('position',new THREE.Float32BufferAttribute(pp,3));
+scene.add(new THREE.Points(pgeo,new THREE.PointsMaterial({color:0x4488bb,size:.06,transparent:true,opacity:.28})));
+
+/* Coastline */
+var coast=new THREE.Mesh(new THREE.BoxGeometry(60,1.2,6),mat(0x2a3a1a,{roughness:.95,metalness:0}));
+coast.position.set(-18,-15.5,-42); scene.add(coast);
+
+/* ── FPSO ─────────────────────────────────────────────────────────── */
+var fpsoGroup=new THREE.Group(); fpsoGroup.userData.key='fpso';
+[box(10,1.4,2.8,mH,0,.5),box(2.5,1.2,2.6,mH,5.8,.4),box(1.5,1.0,2.6,mH,-5.6,.4),
+ box(3.5,1.8,2.4,mS,-1.2,2.05),box(2.5,1.2,2.2,mS,-.8,3.25),box(1.8,.9,2.0,mS,-.5,4.1),
+ cyl(1.1,1.1,.12,14,mat(0xbbbbbb,{roughness:.8}),-.5,4.6),box(10.2,.15,2.82,mA,0,-.08),
+ box(.15,3,.15,mH,2,2.5),box(2.2,.12,.12,mH,3.1,4.05),
+ box(.15,2.5,.15,mH,3.5,2.3),box(1.8,.12,.12,mH,4.4,3.6),
+ box(1.0,.6,.7,mat(0x448844),2.2,2.9)].forEach(function(m){ fpsoGroup.add(m); });
+var heliRing=new THREE.Mesh(new THREE.RingGeometry(.6,1.0,16),new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide,roughness:.9}));
+heliRing.rotation.x=-Math.PI/2; heliRing.position.set(-.5,4.72,0); fpsoGroup.add(heliRing);
+fpsoGroup.add(cyl(.08,.12,4,6,mA,-4.5,2.8,0,0,0,.12));
+var flareTip=sph(.15,new THREE.MeshStandardMaterial({color:0xff6600,roughness:.3,emissive:0xff3300,emissiveIntensity:.6}),-4.68,5.1,0);
+fpsoGroup.add(flareTip);
+fpsoGroup.position.set(0,.7,0); scene.add(fpsoGroup);
+
+/* ── Turret mooring ───────────────────────────────────────────────── */
+var turretGroup=new THREE.Group(); turretGroup.userData.key='turret';
+[cyl(.7,.9,2.5,12,mTur,0,0),cyl(.75,.75,.4,12,mat(0xd4aa30,{roughness:.3,metalness:.8}),0,1.45),cyl(.9,1.0,.6,12,mTur,0,-1.55)].forEach(function(m){ turretGroup.add(m); });
+[0,120,240].forEach(function(deg){
+  var a=deg*Math.PI/180;
+  for(var ci=0;ci<3;ci++){ var da=(ci-1)*.18; turretGroup.add(cyl(.04,.04,.85,5,mCh,Math.sin(a+da)*1.1,-1.8,Math.cos(a+da)*1.1,0,0,a+da)); }
+});
+[0,40,80,120,160,200,240,280,320].forEach(function(deg){
+  var a=deg*Math.PI/180, pts=[];
+  for(var ci=0;ci<=7;ci++){ var f=ci/7; pts.push(new THREE.Vector3(Math.sin(a)*(.8+f*5),.7-f*17-f*f*2,Math.cos(a)*(.8+f*5))); }
+  turretGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),14,.04,5,false),mCh));
+});
+turretGroup.position.set(5.2,.7,0); scene.add(turretGroup);
+
+/* ── Shuttle tanker ───────────────────────────────────────────────── */
+var tankerGroup=new THREE.Group(); tankerGroup.userData.key='tanker';
+[box(14,1.1,3.5,mTnk,0,.3),box(2,1,3.3,mTnk,7.5,.2),box(1.2,.9,3.2,mTnk,-7.2,.2),
+ box(4,1.5,3.1,mat(0xccccbb,{roughness:.8}),3,.8),box(2,.8,2.8,mat(0xccccbb,{roughness:.8}),2.5,1.55),
+ box(14.2,.1,3.52,mA,0,-.13)].forEach(function(m){ tankerGroup.add(m); });
+tankerGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-7,.1,0),new THREE.Vector3(-9,-.1,0),new THREE.Vector3(-11,.1,0)]),14,.05,6,false),mat(0x334455)));
+tankerGroup.position.set(-14,.7,8); tankerGroup.rotation.y=-.3; scene.add(tankerGroup);
+
+/* ── Manifold ─────────────────────────────────────────────────────── */
+var manifoldGroup=new THREE.Group(); manifoldGroup.userData.key='manifold';
+manifoldGroup.add(box(5,.35,3.8,mMnf,0,0));
+manifoldGroup.add(box(4.6,1.8,3.4,new THREE.MeshStandardMaterial({color:0x3a5060,wireframe:true}),0,1.1));
+for(var si=0;si<6;si++){ var sx=-2.25+si*.9; manifoldGroup.add(cyl(.18,.22,.8,7,mMnf,sx,.75,0)); manifoldGroup.add(cyl(.22,.22,.12,7,mMA,sx,1.2,0)); manifoldGroup.add(box(.16,.35,.5,mMA,sx,.95)); }
+[box(4.8,.18,.18,mMnf,0,1.5,.8),box(4.8,.18,.18,mMnf,0,1.5,-.8),box(.18,.18,3.4,mMnf,-2.2,1.5,0),box(.18,.18,3.4,mMnf,2.2,1.5,0)].forEach(function(m){ manifoldGroup.add(m); });
+var scmLed=sph(.06,new THREE.MeshStandardMaterial({color:0x00ff88,emissive:0x00ff44,emissiveIntensity:1.2}),1.5,2.28);
+manifoldGroup.add(box(.6,.5,.4,mat(0x224466,{roughness:.4,metalness:.7}),1.5,2.0)); manifoldGroup.add(scmLed);
+manifoldGroup.add(cyl(.25,.3,.5,7,mMnf,-1.5,.5));
+manifoldGroup.position.set(0,-15.65,0); scene.add(manifoldGroup);
+
+/* ── PLETs ────────────────────────────────────────────────────────── */
+var pletGroup=new THREE.Group(); pletGroup.userData.key='plet';
+[[-4.5,-15.7,-2.5],[-4.5,-15.7,2.5],[-7,-15.7,-1.5],[-7,-15.7,1.5],[-9.5,-15.7,-1],[-9.5,-15.7,1]].forEach(function(p){
+  var g=new THREE.Group();
+  [box(.8,.2,1.2,mPL,0,0,0),box(.18,.5,.18,mPL,-.25,.35,0),box(.18,.5,.18,mPL,.25,.35,0),sph(.12,mat(0x4488bb,{roughness:.3,metalness:.8}),0,.8,0)].forEach(function(m){ g.add(m); });
+  g.position.set(p[0],p[1],p[2]); pletGroup.add(g);
+});
+scene.add(pletGroup);
+
+/* ── UTA + flying leads ───────────────────────────────────────────── */
+var utaGroup=new THREE.Group(); utaGroup.userData.key='uta';
+[box(1.2,.3,1.2,mUT,0,0),box(.9,.6,.9,mUT,0,.45),cyl(.25,.25,.15,7,mat(0x9944bb,{roughness:.3,metalness:.7}),0,.85)].forEach(function(m){ utaGroup.add(m); });
+for(var fl=0;fl<6;fl++){
+  var fla=fl*Math.PI/3;
+  var flPts=[new THREE.Vector3(0,.9,0),new THREE.Vector3(Math.sin(fla)*.6,.4,Math.cos(fla)*.6),new THREE.Vector3(Math.sin(fla)*1.2,.1,Math.cos(fla)*1.2)];
+  utaGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(flPts),8,.03,5,false),fl%2===0?mat(0x6644aa):mat(0xaa6600)));
+}
+utaGroup.position.set(1.8,-15.2,2); scene.add(utaGroup);
+
+/* ── SSIVs ────────────────────────────────────────────────────────── */
+var ssivGroup=new THREE.Group(); ssivGroup.userData.key='ssiv';
+var ssivLeds=[];
+[-2.5,0,2.5].forEach(function(z){
+  var g=new THREE.Group();
+  g.add(box(.5,.5,.5,mSV,0,0,0));
+  g.add(cyl(.12,.12,.55,6,mat(0x882222),-.38,0,0,0,0,Math.PI/2));
+  g.add(cyl(.12,.12,.55,6,mat(0x882222),.38,0,0,0,0,Math.PI/2));
+  var led=sph(.07,new THREE.MeshStandardMaterial({color:0xff2222,emissive:0xff0000,emissiveIntensity:.5}),0,.32,0);
+  ssivLeds.push(led); g.add(led);
+  g.position.set(-2.5,0,z); ssivGroup.add(g);
+});
+ssivGroup.position.set(0,-15.5,0); scene.add(ssivGroup);
+
+/* ── Production wellheads ─────────────────────────────────────────── */
+var wellheadGroup=new THREE.Group(); wellheadGroup.userData.key='wellhead';
+[[-5.5,-3.5],[-5.5,3.5],[-8.5,-1],[-8.5,1],[-11,-2],[-11,2]].forEach(function(p){
+  [cyl(.35,.4,.4,9,mW,p[0],0,p[1]),cyl(.28,.32,.9,9,mW,p[0],.65,p[1]),
+   cyl(.32,.32,.22,9,mWA,p[0],1.15,p[1]),box(.45,.6,.45,mW,p[0],1.6,p[1]),
+   box(.5,.12,.5,mWA,p[0],1.95,p[1])].forEach(function(m){ wellheadGroup.add(m); });
+});
+wellheadGroup.position.set(0,-15.75,0); scene.add(wellheadGroup);
+
+/* ── Injection wells ──────────────────────────────────────────────── */
+var injwellGroup=new THREE.Group(); injwellGroup.userData.key='injwell';
+var injLeds=[];
+[[-5.5,5.5],[-8.5,4]].forEach(function(p){
+  var injLedMat=new THREE.MeshStandardMaterial({color:0x00eeee,roughness:.3,emissive:0x003333,emissiveIntensity:.2});
+  injLeds.push(injLedMat);
+  [cyl(.35,.4,.4,9,mIW,p[0],0,p[1]),cyl(.28,.32,.9,9,mIW,p[0],.65,p[1]),
+   cyl(.32,.32,.22,9,injLedMat,p[0],1.15,p[1]),box(.45,.6,.45,mIW,p[0],1.6,p[1]),
+   box(.5,.12,.5,mat(0x00bbbb),p[0],1.95,p[1])].forEach(function(m){ injwellGroup.add(m); });
+});
+injwellGroup.position.set(0,-15.75,0); scene.add(injwellGroup);
+
+/* ── ROV ──────────────────────────────────────────────────────────── */
+var rovGroup=new THREE.Group(); rovGroup.userData.key='rov';
+[box(.8,.45,.6,mROV,0,0),box(.7,.12,.55,mat(0x00aa55),0,.28)].forEach(function(m){ rovGroup.add(m); });
+var rovLed1=sph(.04,new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffee,emissiveIntensity:2}),.28,.12,.31);
+var rovLed2=sph(.04,new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffee,emissiveIntensity:2}),-.28,.12,.31);
+rovGroup.add(rovLed1); rovGroup.add(rovLed2); scene.add(rovGroup);
+var rovTether=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(2,5,3),new THREE.Vector3(3,10,2),new THREE.Vector3(5,18,.7)]),24,.015,5,false),mat(0x336644,{roughness:.7}));
+scene.add(rovTether);
+
+/* ── SCR risers ───────────────────────────────────────────────────── */
+var riserGroup=new THREE.Group(); riserGroup.userData.key='riser';
+function makeCat(xo,zo,sag){
+  var pts=[]; for(var t=0;t<=1;t+=.035) pts.push(new THREE.Vector3(xo*(1-t)+5.2*t,-15.5+(15.5+.7)*Math.pow(t,.7)-sag*4*t*(1-t),zo*(1-t))); return pts;
+}
+[[-1.5,.7,1.2],[0,0,1.8],[1.5,-.7,1.2],[-.5,-1.2,.9]].forEach(function(c){
+  riserGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(makeCat(c[0],c[1],c[2])),38,.06,6,false),mR));
+});
+scene.add(riserGroup);
+[[1,-1.5,.8],[-1,-2,.6]].forEach(function(c){
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(makeCat(c[0],c[1],c[2])),24,.025,5,false),mat(0x223344,{roughness:.7})));
+});
+
+/* Seabed flowlines */
+[[-4,-15.3,-2,0],[-6,-15.3,1,0],[-8,-15.3,-1.5,0],[-5.5,-15.4,5.5,-1]].forEach(function(p,idx){
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(p[0],p[1],p[2]),new THREE.Vector3(-.5+idx*.1,p[1],p[3])]),10,.055,5),mR));
+});
+
+/* ── Shore power cable ────────────────────────────────────────────── */
+var shorePowerGroup=new THREE.Group(); shorePowerGroup.userData.key='shorepower';
+shorePowerGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-18,-14.8,-42),new THREE.Vector3(-14,-12,-20),new THREE.Vector3(-8,-5,-13),new THREE.Vector3(-5,-1,-8),new THREE.Vector3(-6,.8,-2)]),48,.08,6,false),mSP));
+shorePowerGroup.add(box(.3,.4,.3,mat(0xbbff00,{roughness:.3,metalness:.6}),-6,.8,-2));
+scene.add(shorePowerGroup);
+
+/* BG pillars */
+[[-16,0,-16],[16,0,-20],[-20,0,9]].forEach(function(p){ var c=cyl(1.5,1.0,32,6,new THREE.MeshStandardMaterial({color:0x0a1525,transparent:true,opacity:.27}),p[0],-8,p[2]); c.castShadow=false; scene.add(c); });
+
+/* ── Drilling rig (hidden by default) ─────────────────────────────── */
+var drillingRig=new THREE.Group();
+[box(5,.9,4.5,mat(0x667788),0,.2),
+ box(.3,5,.3,mat(0x556677),-1.8,2.8,-1.8),box(.3,5,.3,mat(0x556677),1.8,2.8,-1.8),
+ box(.3,5,.3,mat(0x556677),-1.8,2.8,1.8),box(.3,5,.3,mat(0x556677),1.8,2.8,1.8),
+ box(4.2,.2,4.2,mat(0x778899,{roughness:.8}),0,5.4),box(.15,8,.15,mat(0x445566),0,9.4),
+ box(3.5,.1,.1,mat(0x445566),0,5.8,0,0,0,-.3),sph(.25,mat(0x334455),0,13.5)].forEach(function(m){ drillingRig.add(m); });
+drillingRig.position.set(-20,0,2); drillingRig.visible=false; scene.add(drillingRig);
+
+/* ── Raycaster ────────────────────────────────────────────────────── */
+var raycaster=new THREE.Raycaster(), mouse=new THREE.Vector2();
+var clickableGroups=[fpsoGroup,turretGroup,tankerGroup,manifoldGroup,pletGroup,utaGroup,ssivGroup,riserGroup,wellheadGroup,injwellGroup,rovGroup,shorePowerGroup];
+var originalMaterials=new Map();
+
+function highlightGroup(g){
+  g.traverse(function(c){
+    if(c.isMesh){
+      if(!originalMaterials.has(c.uuid)) originalMaterials.set(c.uuid,c.material);
+      var h=c.material.clone(); h.emissive=new THREE.Color(0x2244aa); h.emissiveIntensity=.38; c.material=h;
+    }
+  });
+}
+function resetHighlight(g){
+  g.traverse(function(c){
+    if(c.isMesh&&originalMaterials.has(c.uuid)){ c.material=originalMaterials.get(c.uuid); originalMaterials.delete(c.uuid); }
+  });
+}
+
+/* ── Click detection — pointerdown/up with drag guard ────────────
+   OrbitControls in r128 consumes mousedown; using pointerup with a
+   distance threshold cleanly separates clicks from drags.           */
+var pointerDownPos={x:0,y:0};
+canvas.addEventListener('pointerdown',function(e){
+  pointerDownPos.x=e.clientX; pointerDownPos.y=e.clientY;
+});
+canvas.addEventListener('pointerup',function(e){
+  var dx=e.clientX-pointerDownPos.x, dy=e.clientY-pointerDownPos.y;
+  if(Math.sqrt(dx*dx+dy*dy)>6) return; /* was a drag, not a click */
+
+  var rect=canvas.getBoundingClientRect();
+  mouse.x=((e.clientX-rect.left)/rect.width)*2-1;
+  mouse.y=-((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  var found=null, closestDist=Infinity;
+  for(var gi=0;gi<clickableGroups.length;gi++){
+    var hits=raycaster.intersectObject(clickableGroups[gi],true);
+    if(hits.length>0&&hits[0].distance<closestDist){ closestDist=hits[0].distance; found=clickableGroups[gi]; }
+  }
+  if(found){
+    if(selectedObj&&selectedObj!==found) resetHighlight(selectedObj);
+    selectedObj=found; highlightGroup(found); speOpenPanel(found.userData.key);
+  } else {
+    if(selectedObj){ resetHighlight(selectedObj); selectedObj=null; }
+    if(isPanelOpen()) speClosePanel();
+  }
+});
+
+/* ── Focus positions ──────────────────────────────────────────────── */
+var FOCUS={
+  fpso:     {p:new THREE.Vector3(4,5,16),   t:new THREE.Vector3(0,2,0)},
+  turret:   {p:new THREE.Vector3(8,4,10),   t:new THREE.Vector3(5,1,0)},
+  tanker:   {p:new THREE.Vector3(-10,5,18), t:new THREE.Vector3(-14,2,8)},
+  manifold: {p:new THREE.Vector3(0,-8,12),  t:new THREE.Vector3(0,-15,0)},
+  plet:     {p:new THREE.Vector3(-8,-10,10),t:new THREE.Vector3(-6,-15,0)},
+  uta:      {p:new THREE.Vector3(4,-10,8),  t:new THREE.Vector3(2,-15,2)},
+  ssiv:     {p:new THREE.Vector3(-4,-10,8), t:new THREE.Vector3(-2,-15,0)},
+  riser:    {p:new THREE.Vector3(10,-4,12), t:new THREE.Vector3(4,-8,0)},
+  wellhead: {p:new THREE.Vector3(-12,-8,12),t:new THREE.Vector3(-6,-15,0)},
+  injwell:  {p:new THREE.Vector3(-10,-8,14),t:new THREE.Vector3(-7,-15,5)},
+  rov:      {p:new THREE.Vector3(-4,-10,8), t:new THREE.Vector3(-2,-14,0)},
+  shorepower:{p:new THREE.Vector3(-14,-4,-12),t:new THREE.Vector3(-8,-8,-10)}
+};
+var grpMap={fpso:fpsoGroup,turret:turretGroup,tanker:tankerGroup,manifold:manifoldGroup,plet:pletGroup,uta:utaGroup,ssiv:ssivGroup,riser:riserGroup,wellhead:wellheadGroup,injwell:injwellGroup,rov:rovGroup,shorepower:shorePowerGroup};
+
+function speFocusObject(key){
+  var f=FOCUS[key]; if(!f) return;
+  camera.position.copy(f.p); controls.target.copy(f.t); controls.update();
+  speOpenPanel(key);
+  var g=grpMap[key]; if(g){ if(selectedObj&&selectedObj!==g) resetHighlight(selectedObj); selectedObj=g; highlightGroup(g); }
+}
+
+function speSetPhase(phase){
+  var btns=document.querySelectorAll('.spe-phase-btn');
+  for(var bi=0;bi<btns.length;bi++) btns[bi].classList.toggle('active',btns[bi].getAttribute('data-phase')===phase);
+  drillingRig.visible=(phase==='drilling');
+}
+
+/* ── Wire DOM events ──────────────────────────────────────────────── */
+document.getElementById('spe-panel-close').addEventListener('click',function(){ speClosePanel(); });
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&isPanelOpen()) speClosePanel(); });
+
+var legItems=document.querySelectorAll('.spe-leg-item[data-focus]');
+for(var le=0;le<legItems.length;le++){
+  (function(el){ el.addEventListener('click',function(){ speFocusObject(el.getAttribute('data-focus')); }); })(legItems[le]);
+}
+var phaseBtns=document.querySelectorAll('.spe-phase-btn[data-phase]');
+for(var pb=0;pb<phaseBtns.length;pb++){
+  (function(el){ el.addEventListener('click',function(){ speSetPhase(el.getAttribute('data-phase')); }); })(phaseBtns[pb]);
+}
+window.addEventListener('resize',function(){ W=root.clientWidth; H=root.clientHeight; camera.aspect=W/H; camera.updateProjectionMatrix(); renderer.setSize(W,H); });
+
+/* ── Animate ──────────────────────────────────────────────────────── */
+var clock=new THREE.Clock(), rafId=null, frameCount=0, paused=false;
+var rovBatt=94;
+
+document.addEventListener('visibilitychange',function(){ paused=document.hidden; if(!paused&&!rafId) rafId=requestAnimationFrame(animate); });
+
+function animate(){
+  if(paused){ rafId=null; return; }
+  rafId=requestAnimationFrame(animate);
+  frameCount++;
+  var t=clock.getElapsedTime();
+  /* Water ripple */
+  for(var wvi=0;wvi<wV.count;wvi++){ var wx=wV.getX(wvi),wz=wV.getZ(wvi); wV.setY(wvi,wOY[wvi]+Math.sin(wx*.4+t)*.08+Math.cos(wz*.5+t*.7)*.06); }
+  wV.needsUpdate=true;
+  if(frameCount%3===0) wMsh.geometry.computeVertexNormals();
+  /* FPSO + turret sway */
+  fpsoGroup.rotation.z=Math.sin(t*.3)*.015; fpsoGroup.position.y=.7+Math.sin(t*.4)*.04;
+  turretGroup.position.y=fpsoGroup.position.y; turretGroup.rotation.z=fpsoGroup.rotation.z;
+  /* Tanker bob */
+  tankerGroup.position.y=.7+Math.sin(t*.35+1.2)*.03; tankerGroup.rotation.z=Math.sin(t*.28+.8)*.01;
+  /* ROV patrol */
+  var rovX=-4+Math.sin(t*.18)*5, rovZ=Math.sin(t*.09)*4+Math.cos(t*.14)*2, rovY=-14.5+Math.cos(t*.22)*.6;
+  rovGroup.position.set(rovX,rovY,rovZ);
+  rovGroup.rotation.y=Math.atan2(Math.cos(t*.18)*5*.18,Math.cos(t*.09)*4*.09+Math.cos(t*.14)*2*.14);
+  rovTether.position.set(rovX,rovY,rovZ);
+  /* ROV HUD */
+  if(frameCount%18===0){
+    var rovDepth=Math.round(1185+Math.abs(rovY+14.5)*10);
+    var stats=['SURVEY','INSPECT','TRANSIT','STANDBY'];
+    var dEl=document.getElementById('rov-depth'); if(dEl) dEl.textContent=rovDepth.toLocaleString('en-CA')+' m';
+    var sEl=document.getElementById('rov-status'); if(sEl) sEl.textContent=stats[Math.floor(t/8)%4];
+    var bEl=document.getElementById('rov-batt');   if(bEl) bEl.textContent=rovBatt.toFixed(0)+'%';
+  }
+  /* LED pulses — direct material references only */
+  scmLed.material.emissiveIntensity=.8+Math.sin(t*4)*.4;
+  flareTip.material.emissiveIntensity=.4+Math.abs(Math.sin(t*2.5))*.6;
+  rovLed1.material.emissiveIntensity=1.6+Math.sin(t*7)*.3;
+  rovLed2.material.emissiveIntensity=1.6+Math.cos(t*7.3)*.3;
+  for(var sli=0;sli<ssivLeds.length;sli++) ssivLeds[sli].material.emissiveIntensity=Math.abs(Math.sin(t*1.5))*.8;
+  for(var ili=0;ili<injLeds.length;ili++) injLeds[ili].emissiveIntensity=.1+Math.abs(Math.sin(t*.8))*.15;
+  controls.update();
+  renderer.render(scene,camera);
+}
+rafId=requestAnimationFrame(animate);
+
+})();
+</script>
